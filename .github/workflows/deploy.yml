@@ -53,9 +53,9 @@ jobs:
             TELEGRAM_CHANNEL_ID=$TELEGRAM_CHANNEL_ID
             TELEGRAM_ADMIN_ID=$TELEGRAM_ADMIN_ID
             OPENROUTER_API_KEY=$OPENROUTER_API_KEY
-            LLM_REQUEST_DELAY=$LLM_REQUEST_DELAY
-            LLM_MAX_RETRIES=$LLM_MAX_RETRIES
             EOF
+            [ -n "$LLM_REQUEST_DELAY" ] && echo "LLM_REQUEST_DELAY=$LLM_REQUEST_DELAY" >> .env
+            [ -n "$LLM_MAX_RETRIES" ] && echo "LLM_MAX_RETRIES=$LLM_MAX_RETRIES" >> .env
             [ -n "$CUSTOM_LLM_API_URL" ] && echo "CUSTOM_LLM_API_URL=$CUSTOM_LLM_API_URL" >> .env
             [ -n "$CUSTOM_LLM_API_KEY" ] && echo "CUSTOM_LLM_API_KEY=$CUSTOM_LLM_API_KEY" >> .env
             [ -n "$CUSTOM_LLM_MODEL" ] && echo "CUSTOM_LLM_MODEL=$CUSTOM_LLM_MODEL" >> .env
