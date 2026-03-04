@@ -1,0 +1,9 @@
+services:
+  bot:
+    image: ghcr.io/${GITHUB_REPOSITORY:-tg-summary-bot}:latest
+    build: .
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    restart: unless-stopped
