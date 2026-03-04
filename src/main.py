@@ -61,15 +61,15 @@ async def main() -> None:
 
     bg_task: asyncio.Task[None] | None = None
 
-    async def on_startup(bot_instance: Bot) -> None:
+    async def on_startup(bot: Bot, **_: object) -> None:
         nonlocal bg_task
-        await set_bot_commands(bot_instance)
+        await set_bot_commands(bot)
         bg_task = asyncio.create_task(processor.start_background_loop())
         if agg_scheduler is not None:
             agg_scheduler.start()
         logger.info("Bot started, background queue processor running")
 
-    async def on_shutdown(bot_instance: Bot) -> None:
+    async def on_shutdown(bot: Bot, **_: object) -> None:
         if agg_scheduler is not None:
             agg_scheduler.stop()
         if agg_pipeline is not None:
