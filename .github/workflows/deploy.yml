@@ -1,92 +1,89 @@
-name: Build and Deploy
+name: Deploy
 
 on:
   push:
     branches: [main]
+    paths:
+      - "src/**"
+      - "Dockerfile"
+      - "requirements.txt"
+  workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE: ghcr.io/${{ github.repository }}:latest
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       packages: write
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Log in to Container registry
+      - name: Login to ghcr.io
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha
-            type=raw,value=latest
-
-      - name: Build and push Docker image
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.IMAGE }}
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    environment: production
-
-    steps:
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ vars.VPS_HOST }}
           username: ${{ vars.VPS_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHANNEL_ID,TELEGRAM_ADMIN_ID,OPENROUTER_API_KEY,CUSTOM_LLM_API_URL,CUSTOM_LLM_API_KEY,CUSTOM_LLM_MODEL,LLM_REQUEST_DELAY,LLM_MAX_RETRIES,IMAGE,GITHUB_TOKEN,GITHUB_ACTOR
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: DEPLOY_DIR,IMAGE,GH_USER,GH_TOKEN,TELEGRAM_BOT_TOKEN,TELEGRAM_CHANNEL_ID,TELEGRAM_ADMIN_ID,OPENROUTER_API_KEY,CUSTOM_LLM_API_URL,CUSTOM_LLM_API_KEY,CUSTOM_LLM_MODEL,LLM_REQUEST_DELAY,LLM_MAX_RETRIES,AGGREGATOR_ENABLED,AGGREGATOR_ENABLED_SOURCES,AGGREGATOR_SCHEDULE,AGGREGATOR_TONE,RSS_FEED_URLS,RSS_MAX_ITEMS_PER_FEED,RSS_MAX_ITEMS_TOTAL,RSS_MAX_AGE_DAYS
           script: |
-            mkdir -p ~/tg-summary-bot/data
-            cd ~/tg-summary-bot
-
-            printf '%s\n' \
-              "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" \
-              "TELEGRAM_CHANNEL_ID=${TELEGRAM_CHANNEL_ID}" \
-              "TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID}" \
-              "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}" \
-              "CUSTOM_LLM_API_URL=${CUSTOM_LLM_API_URL}" \
-              "CUSTOM_LLM_API_KEY=${CUSTOM_LLM_API_KEY}" \
-              "CUSTOM_LLM_MODEL=${CUSTOM_LLM_MODEL}" \
-              "LLM_REQUEST_DELAY=${LLM_REQUEST_DELAY}" \
-              "LLM_MAX_RETRIES=${LLM_MAX_RETRIES}" \
-              > .env
-
-            printf '%s\n' \
-              "services:" \
-              "  bot:" \
-              "    image: ${IMAGE}:latest" \
-              "    volumes:" \
-              "      - ./data:/app/data" \
-              "    env_file:" \
-              "      - .env" \
-              "    restart: unless-stopped" \
-              > docker-compose.yml
-
-            echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
-            docker pull "${IMAGE}:latest"
-            docker compose up -d
+            echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_USER" --password-stdin
+            mkdir -p $DEPLOY_DIR/data && cd $DEPLOY_DIR
+            cat > .env <<EOF
+            TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
+            TELEGRAM_CHANNEL_ID=$TELEGRAM_CHANNEL_ID
+            TELEGRAM_ADMIN_ID=$TELEGRAM_ADMIN_ID
+            OPENROUTER_API_KEY=$OPENROUTER_API_KEY
+            LLM_REQUEST_DELAY=$LLM_REQUEST_DELAY
+            LLM_MAX_RETRIES=$LLM_MAX_RETRIES
+            EOF
+            [ -n "$CUSTOM_LLM_API_URL" ] && echo "CUSTOM_LLM_API_URL=$CUSTOM_LLM_API_URL" >> .env
+            [ -n "$CUSTOM_LLM_API_KEY" ] && echo "CUSTOM_LLM_API_KEY=$CUSTOM_LLM_API_KEY" >> .env
+            [ -n "$CUSTOM_LLM_MODEL" ] && echo "CUSTOM_LLM_MODEL=$CUSTOM_LLM_MODEL" >> .env
+            [ -n "$AGGREGATOR_ENABLED" ] && echo "AGGREGATOR_ENABLED=$AGGREGATOR_ENABLED" >> .env
+            [ -n "$AGGREGATOR_ENABLED_SOURCES" ] && echo "AGGREGATOR_ENABLED_SOURCES=$AGGREGATOR_ENABLED_SOURCES" >> .env
+            [ -n "$AGGREGATOR_SCHEDULE" ] && echo "AGGREGATOR_SCHEDULE=$AGGREGATOR_SCHEDULE" >> .env
+            [ -n "$AGGREGATOR_TONE" ] && echo "AGGREGATOR_TONE=$AGGREGATOR_TONE" >> .env
+            [ -n "$RSS_FEED_URLS" ] && echo "RSS_FEED_URLS=$RSS_FEED_URLS" >> .env
+            [ -n "$RSS_MAX_ITEMS_PER_FEED" ] && echo "RSS_MAX_ITEMS_PER_FEED=$RSS_MAX_ITEMS_PER_FEED" >> .env
+            [ -n "$RSS_MAX_ITEMS_TOTAL" ] && echo "RSS_MAX_ITEMS_TOTAL=$RSS_MAX_ITEMS_TOTAL" >> .env
+            [ -n "$RSS_MAX_AGE_DAYS" ] && echo "RSS_MAX_AGE_DAYS=$RSS_MAX_AGE_DAYS" >> .env
+            cat > docker-compose.yml <<EOF
+            services:
+              bot:
+                image: $IMAGE
+                container_name: tg-summary-bot
+                restart: unless-stopped
+                env_file: .env
+                volumes:
+                  - ./data:/app/data
+            EOF
+            docker compose pull
+            docker compose up -d --force-recreate
         env:
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
+          IMAGE: ${{ env.IMAGE }}
+          GH_USER: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ vars.TELEGRAM_CHANNEL_ID }}
           TELEGRAM_ADMIN_ID: ${{ vars.TELEGRAM_ADMIN_ID }}
@@ -96,6 +93,11 @@ jobs:
           CUSTOM_LLM_MODEL: ${{ vars.CUSTOM_LLM_MODEL }}
           LLM_REQUEST_DELAY: ${{ vars.LLM_REQUEST_DELAY }}
           LLM_MAX_RETRIES: ${{ vars.LLM_MAX_RETRIES }}
-          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_ACTOR: ${{ github.actor }}
+          AGGREGATOR_ENABLED: ${{ vars.AGGREGATOR_ENABLED }}
+          AGGREGATOR_ENABLED_SOURCES: ${{ vars.AGGREGATOR_ENABLED_SOURCES }}
+          AGGREGATOR_SCHEDULE: ${{ vars.AGGREGATOR_SCHEDULE }}
+          AGGREGATOR_TONE: ${{ vars.AGGREGATOR_TONE }}
+          RSS_FEED_URLS: ${{ vars.RSS_FEED_URLS }}
+          RSS_MAX_ITEMS_PER_FEED: ${{ vars.RSS_MAX_ITEMS_PER_FEED }}
+          RSS_MAX_ITEMS_TOTAL: ${{ vars.RSS_MAX_ITEMS_TOTAL }}
+          RSS_MAX_AGE_DAYS: ${{ vars.RSS_MAX_AGE_DAYS }}
