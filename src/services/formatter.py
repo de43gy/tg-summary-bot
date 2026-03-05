@@ -3,6 +3,7 @@ from __future__ import annotations
 _MAX_LENGTH = 4096
 _LINK_EMOJI = "\U0001f517"  # chain link
 _ARTICLE_EMOJI = "\U0001f4ce"  # paperclip
+_COMMENT_EMOJI = "\U0001f4ac"  # speech bubble
 
 
 def format_channel_post(
@@ -24,65 +25,74 @@ def format_channel_post(
     if len(full_text) <= _MAX_LENGTH:
         return [full_text]
 
-    # Split: first message = header + as much summary as fits + "(1/N)"
-    # subsequent = continuation + "(K/N)"
-    # last = remainder + footer
     return _split_long_post(header, summary, footer)
 
 
+def format_commentary(commentary: str) -> str:
+    """Format critical commentary for a reply message."""
+    return f"{_COMMENT_EMOJI} Критический комментарий\n\n{commentary}"
+
+
 def _split_long_post(header: str, summary: str, footer: str) -> list[str]:
-    """Split a long post into multiple messages at paragraph boundaries."""
-    paragraphs = summary.split("\n\n")
+    """Split a long post into multiple messages at paragraph boundaries.
+
+    Guarantees every returned message is <= _MAX_LENGTH.
+    """
+    paragraphs = [p for p in summary.split("\n\n") if p.strip()]
+    if not paragraphs:
+        paragraphs = [summary]
+
     messages: list[str] = []
-    current_parts: list[str] = []
-    current_len = len(header) + 2  # header + \n\n
+    current = header  # first message starts with header
 
     for para in paragraphs:
-        # +2 for \n\n separator between paragraphs
-        added_len = len(para) + (2 if current_parts else 0)
-
-        if current_len + added_len > _MAX_LENGTH - 20:  # reserve for overflow
-            if current_parts:
-                if not messages:
-                    # First message includes header
-                    messages.append(header + "\n\n" + "\n\n".join(current_parts))
-                else:
-                    messages.append("\n\n".join(current_parts))
-                current_parts = [para]
-                current_len = len(para)
-            else:
-                # Single paragraph is too long — hard split by lines
-                lines = para.split("\n")
-                chunk: list[str] = []
-                chunk_len = 0 if messages else len(header) + 2
-                for line in lines:
-                    if chunk_len + len(line) + 1 > _MAX_LENGTH - 20:
-                        text = "\n".join(chunk)
-                        if not messages:
-                            messages.append(header + "\n\n" + text)
-                        else:
-                            messages.append(text)
-                        chunk = [line]
-                        chunk_len = len(line)
-                    else:
-                        chunk.append(line)
-                        chunk_len += len(line) + 1
-                current_parts = ["\n".join(chunk)] if chunk else []
-                current_len = sum(len(p) for p in current_parts)
+        candidate = current + "\n\n" + para
+        if len(candidate) <= _MAX_LENGTH:
+            current = candidate
         else:
-            current_parts.append(para)
-            current_len += added_len
+            # Flush current message
+            if current:
+                messages.append(current)
 
-    # Last message: remaining text + footer
-    remaining = "\n\n".join(current_parts) if current_parts else ""
-    if not messages:
-        # Everything fits after all — header + remaining + footer
-        parts = [p for p in [header, remaining, footer] if p]
-        messages.append("\n\n".join(parts))
-    else:
-        parts = [p for p in [remaining, footer] if p]
-        if parts:
-            last = "\n\n".join(parts)
-            messages.append(last)
+            # Start new message with this paragraph
+            if len(para) <= _MAX_LENGTH:
+                current = para
+            else:
+                # Hard-split long paragraph by finding word/line boundaries
+                chunks = _hard_split(para)
+                messages.extend(chunks[:-1])
+                current = chunks[-1] if chunks else ""
 
-    return messages
+    # Append footer to last chunk, or as separate message
+    if footer:
+        candidate = current + "\n\n" + footer if current else footer
+        if len(candidate) <= _MAX_LENGTH:
+            current = candidate
+        else:
+            if current:
+                messages.append(current)
+            current = footer
+
+    if current:
+        messages.append(current)
+
+    return messages if messages else [summary[:_MAX_LENGTH]]
+
+
+def _hard_split(text: str, max_len: int = _MAX_LENGTH) -> list[str]:
+    """Split text that exceeds max_len into chunks at line or word boundaries."""
+    chunks: list[str] = []
+    while len(text) > max_len:
+        # Try to find a newline to split at
+        split_at = text.rfind("\n", 0, max_len)
+        if split_at < max_len // 2:
+            # No good newline, try space
+            split_at = text.rfind(" ", 0, max_len)
+        if split_at < max_len // 2:
+            # No good boundary, hard cut
+            split_at = max_len
+        chunks.append(text[:split_at])
+        text = text[split_at:].lstrip()
+    if text:
+        chunks.append(text)
+    return chunks

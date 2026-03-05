@@ -25,6 +25,7 @@ def mock_summarizer():
     summarizer.summarize = AsyncMock(return_value={
         "title": "Тестовый заголовок",
         "summary": "Тестовый конспект статьи",
+        "commentary": "Полезность: высокая.",
         "hashtags": ["python", "testing"],
     })
     return summarizer
@@ -51,12 +52,12 @@ class TestProcessArticle:
         assert updated.title == "Тестовый заголовок"
         assert updated.channel_message_id == 100
 
-        # Verify bot posted to channel
+        # Verify bot posted to channel (conspect + commentary reply)
         channel_calls = [
             c for c in mock_bot.send_message.call_args_list
             if c[0][0] == config.telegram_channel_id
         ]
-        assert len(channel_calls) == 1
+        assert len(channel_calls) == 2  # post + commentary reply
 
     async def test_article_not_found(self, processor):
         result = await processor.process_article(9999)
@@ -110,6 +111,7 @@ class TestProcessArticle:
             return {
                 "title": "Восстановленный заголовок",
                 "summary": "Конспект",
+                "commentary": "Полезность: средняя.",
                 "hashtags": ["test"],
             }
 

@@ -1,4 +1,8 @@
-from src.services.formatter import _MAX_LENGTH, format_channel_post
+from src.services.formatter import (
+    _MAX_LENGTH,
+    format_channel_post,
+    format_commentary,
+)
 
 
 class TestFormatChannelPost:
@@ -33,8 +37,8 @@ class TestFormatChannelPost:
             hashtags=["tag1", "tag2"],
             original_url="https://example.com/long",
         )
-        for part in parts:
-            assert len(part) <= _MAX_LENGTH
+        for i, part in enumerate(parts):
+            assert len(part) <= _MAX_LENGTH, f"Part {i} is {len(part)} chars"
 
     def test_long_post_splits_into_multiple(self):
         long_summary = ("Параграф текста. " * 50 + "\n\n") * 20
@@ -119,3 +123,25 @@ class TestFormatChannelPost:
             original_url="https://example.com/page",
         )
         assert "\U0001f4ce Заголовок" in parts[0]
+
+    def test_single_huge_paragraph_splits(self):
+        # Single paragraph with no \n\n, longer than 4096
+        huge = "Слово " * 2000
+        parts = format_channel_post(
+            title="T",
+            summary=huge,
+            hashtags=["t"],
+            original_url="https://x.com",
+        )
+        for i, part in enumerate(parts):
+            assert len(part) <= _MAX_LENGTH, f"Part {i} is {len(part)} chars"
+        # Content should be preserved
+        full = " ".join(parts)
+        assert "Слово" in full
+
+
+class TestFormatCommentary:
+    def test_basic_commentary(self):
+        result = format_commentary("Полезность: высокая. Оригинальность: средняя.")
+        assert "\U0001f4ac Критический комментарий" in result
+        assert "Полезность: высокая" in result

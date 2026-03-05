@@ -36,41 +36,48 @@ class TestParseResponse:
         raw = json.dumps({
             "title": "Заголовок",
             "summary": "Конспект статьи",
+            "commentary": "Полезность: высокая.",
             "hashtags": ["python", "web"],
         })
         result = _parse_response(raw)
         assert result["title"] == "Заголовок"
         assert result["summary"] == "Конспект статьи"
+        assert result["commentary"] == "Полезность: высокая."
         assert result["hashtags"] == ["python", "web"]
 
     def test_json_in_code_block(self):
-        raw = '```json\n{"title": "Заголовок", "summary": "Текст", "hashtags": ["ai"]}\n```'
+        raw = '```json\n{"title": "Заголовок", "summary": "Текст", "commentary": "Ок.", "hashtags": ["ai"]}\n```'
         result = _parse_response(raw)
         assert result["title"] == "Заголовок"
         assert result["hashtags"] == ["ai"]
 
     def test_json_in_code_block_no_lang(self):
-        raw = '```\n{"title": "T", "summary": "S", "hashtags": ["x"]}\n```'
+        raw = '```\n{"title": "T", "summary": "S", "commentary": "C", "hashtags": ["x"]}\n```'
         result = _parse_response(raw)
         assert result["title"] == "T"
 
     def test_missing_title_raises(self):
-        raw = json.dumps({"summary": "text", "hashtags": ["a"]})
+        raw = json.dumps({"summary": "text", "commentary": "C", "hashtags": ["a"]})
         with pytest.raises(ValueError, match="title"):
             _parse_response(raw)
 
     def test_missing_summary_raises(self):
-        raw = json.dumps({"title": "T", "hashtags": ["a"]})
+        raw = json.dumps({"title": "T", "commentary": "C", "hashtags": ["a"]})
         with pytest.raises(ValueError, match="summary"):
             _parse_response(raw)
 
+    def test_missing_commentary_raises(self):
+        raw = json.dumps({"title": "T", "summary": "S", "hashtags": ["a"]})
+        with pytest.raises(ValueError, match="commentary"):
+            _parse_response(raw)
+
     def test_missing_hashtags_raises(self):
-        raw = json.dumps({"title": "T", "summary": "S"})
+        raw = json.dumps({"title": "T", "summary": "S", "commentary": "C"})
         with pytest.raises(ValueError, match="hashtags"):
             _parse_response(raw)
 
     def test_invalid_title_type_raises(self):
-        raw = json.dumps({"title": 123, "summary": "S", "hashtags": ["a"]})
+        raw = json.dumps({"title": 123, "summary": "S", "commentary": "C", "hashtags": ["a"]})
         with pytest.raises(ValueError, match="title"):
             _parse_response(raw)
 
@@ -79,7 +86,7 @@ class TestParseResponse:
             _parse_response("not json at all")
 
     def test_json_with_whitespace(self):
-        raw = '  \n  {"title": "T", "summary": "S", "hashtags": ["a"]}  \n  '
+        raw = '  \n  {"title": "T", "summary": "S", "commentary": "C", "hashtags": ["a"]}  \n  '
         result = _parse_response(raw)
         assert result["title"] == "T"
 
@@ -90,6 +97,7 @@ class TestSummarizer:
         mock_llm.complete = AsyncMock(return_value=json.dumps({
             "title": "Тест",
             "summary": "Конспект тестовой статьи",
+            "commentary": "Полезность: высокая.",
             "hashtags": ["testing"],
         }))
 
@@ -98,13 +106,14 @@ class TestSummarizer:
 
         assert result["title"] == "Тест"
         assert result["summary"] == "Конспект тестовой статьи"
+        assert result["commentary"] == "Полезность: высокая."
         assert result["hashtags"] == ["testing"]
         mock_llm.complete.assert_called_once()
 
     async def test_summarize_truncates_long_text(self):
         mock_llm = AsyncMock()
         mock_llm.complete = AsyncMock(return_value=json.dumps({
-            "title": "T", "summary": "S", "hashtags": ["a"],
+            "title": "T", "summary": "S", "commentary": "C", "hashtags": ["a"],
         }))
 
         summarizer = Summarizer(mock_llm)
@@ -120,7 +129,7 @@ class TestSummarizer:
 
         mock_llm = AsyncMock()
         mock_llm.complete = AsyncMock(return_value=json.dumps({
-            "title": "T", "summary": "S", "hashtags": ["python"],
+            "title": "T", "summary": "S", "commentary": "C", "hashtags": ["python"],
         }))
 
         tags = [

@@ -6,7 +6,7 @@ from aiogram import Bot
 from src.config import Config
 from src.db.queries import Queries
 from src.services.article_parser import fetch_and_parse
-from src.services.formatter import format_channel_post
+from src.services.formatter import format_channel_post, format_commentary
 from src.services.summarizer import Summarizer
 
 logger = logging.getLogger(__name__)
@@ -108,6 +108,7 @@ class QueueProcessor:
 
         title = result["title"]
         summary = result["summary"]
+        commentary: str = result.get("commentary", "")
         hashtag_names: list[str] = result["hashtags"]
 
         # Step 3: save hashtags
@@ -120,13 +121,25 @@ class QueueProcessor:
         # Step 4: format and post to channel
         post_parts = format_channel_post(title, summary, hashtag_names, article.url)
         try:
+            first_msg = None
             last_msg = None
             for part in post_parts:
                 last_msg = await self._bot.send_message(
                     self._config.telegram_channel_id, part
                 )
+                if first_msg is None:
+                    first_msg = last_msg
                 if len(post_parts) > 1:
                     await asyncio.sleep(1)  # rate limit between messages
+
+            # Step 4b: send commentary as reply to first post
+            if commentary and first_msg:
+                comment_text = format_commentary(commentary)
+                await self._bot.send_message(
+                    self._config.telegram_channel_id,
+                    comment_text,
+                    reply_to_message_id=first_msg.message_id,
+                )
         except Exception as exc:
             error = f"Не удалось отправить в канал: {exc}"
             logger.exception(error)
@@ -143,7 +156,7 @@ class QueueProcessor:
             "done",
             title=title,
             summary=summary,
-            channel_message_id=last_msg.message_id if last_msg else None,
+            channel_message_id=first_msg.message_id if first_msg else None,
         )
 
         # Step 6: confirm to user
