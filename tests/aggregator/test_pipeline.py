@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-import hashlib
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from src.aggregator.pipeline import ContentPipeline, PipelineContext
-from src.aggregator.sources.base import ContentItem, ContentSource, SOURCE_REGISTRY
+from src.aggregator.sources.base import ContentItem, ContentSource
 from src.config import Config
 from src.db.database import Database
 from src.db.queries import Queries
-
 
 # ── Helpers ────────────────────────────────────────────────────
 
@@ -195,7 +193,7 @@ class TestStageGenerate:
 
 
 class TestStageFormat:
-    def test_format_builds_post_text(self, pipeline):
+    def test_format_builds_post_parts(self, pipeline):
         ctx = PipelineContext(
             generated_title="Заголовок",
             generated_summary="Текст дайджеста",
@@ -203,19 +201,20 @@ class TestStageFormat:
             source_urls=["https://example.com/1", "https://example.com/2"],
         )
         pipeline._stage_format(ctx)
-        assert "Заголовок" in ctx.post_text
-        assert "Текст дайджеста" in ctx.post_text
-        assert "#ml" in ctx.post_text
-        assert "#ai" in ctx.post_text
-        assert "Источники:" in ctx.post_text
-        assert "https://example.com/1" in ctx.post_text
+        full = "\n\n".join(ctx.post_parts)
+        assert "Заголовок" in full
+        assert "Текст дайджеста" in full
+        assert "#ml" in full
+        assert "#ai" in full
+        assert "Источники:" in full
+        assert "https://example.com/1" in full
 
 
 class TestStagePublish:
     async def test_publish_sends_to_channel(self, pipeline, mock_bot, aggregator_config):
         pipeline._sources = {"fake": FakeSource()}
         ctx = PipelineContext(
-            post_text="Test post text",
+            post_parts=["Test post text"],
             generated_hashtags=["tag1"],
         )
 

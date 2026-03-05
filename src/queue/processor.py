@@ -118,9 +118,15 @@ class QueueProcessor:
         await self._queries.link_article_hashtags(article.id, hashtag_ids)
 
         # Step 4: format and post to channel
-        post_text = format_channel_post(title, summary, hashtag_names, article.url)
+        post_parts = format_channel_post(title, summary, hashtag_names, article.url)
         try:
-            msg = await self._bot.send_message(self._config.telegram_channel_id, post_text)
+            last_msg = None
+            for part in post_parts:
+                last_msg = await self._bot.send_message(
+                    self._config.telegram_channel_id, part
+                )
+                if len(post_parts) > 1:
+                    await asyncio.sleep(1)  # rate limit between messages
         except Exception as exc:
             error = f"Не удалось отправить в канал: {exc}"
             logger.exception(error)
@@ -137,7 +143,7 @@ class QueueProcessor:
             "done",
             title=title,
             summary=summary,
-            channel_message_id=msg.message_id,
+            channel_message_id=last_msg.message_id if last_msg else None,
         )
 
         # Step 6: confirm to user

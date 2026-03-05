@@ -1,16 +1,12 @@
 from __future__ import annotations
 
-import time
-from calendar import timegm
 from datetime import UTC, datetime, timedelta
-from time import struct_time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 
 from src.aggregator.sources.rss_example import RSSExampleSource, _strip_html
-
 
 # ── Sample RSS XML ─────────────────────────────────────────────
 

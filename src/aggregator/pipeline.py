@@ -51,7 +51,7 @@ class PipelineContext:
     generated_title: str = ""
     generated_summary: str = ""
     generated_hashtags: list[str] = field(default_factory=list)
-    post_text: str = ""
+    post_parts: list[str] = field(default_factory=list)
     source_urls: list[str] = field(default_factory=list)
 
 
@@ -187,7 +187,7 @@ class ContentPipeline:
         if links_section:
             summary_with_links += f"\n\nИсточники:\n{links_section}"
 
-        ctx.post_text = format_channel_post(
+        ctx.post_parts = format_channel_post(
             title=ctx.generated_title,
             summary=summary_with_links,
             hashtags=ctx.generated_hashtags,
@@ -196,11 +196,14 @@ class ContentPipeline:
 
     async def _stage_publish(self, ctx: PipelineContext) -> None:
         try:
-            await self._bot.send_message(
-                self._config.telegram_channel_id,
-                ctx.post_text,
-                disable_web_page_preview=True,
-            )
+            for part in ctx.post_parts:
+                await self._bot.send_message(
+                    self._config.telegram_channel_id,
+                    part,
+                    disable_web_page_preview=True,
+                )
+                if len(ctx.post_parts) > 1:
+                    await asyncio.sleep(1)
             logger.info("Digest published to channel")
 
             for tag_name in ctx.generated_hashtags:
