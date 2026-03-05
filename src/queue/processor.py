@@ -40,8 +40,8 @@ class QueueProcessor:
         if not article:
             return False
 
-        # Skip if already processed or currently being processed
-        if article.status in ("done", "processing"):
+        # Skip if already processed
+        if article.status == "done":
             return False
 
         # Use stored chat_id as fallback for replies (e.g., after restart)
@@ -119,7 +119,17 @@ class QueueProcessor:
 
         # Step 4: format and post to channel
         post_text = format_channel_post(title, summary, hashtag_names, article.url)
-        msg = await self._bot.send_message(self._config.telegram_channel_id, post_text)
+        try:
+            msg = await self._bot.send_message(self._config.telegram_channel_id, post_text)
+        except Exception as exc:
+            error = f"Не удалось отправить в канал: {exc}"
+            logger.exception(error)
+            await self._queries.update_article_status(
+                article.id, "failed", title=title, summary=summary, error_message=error
+            )
+            if chat_id:
+                await self._bot.send_message(chat_id, error)
+            return False
 
         # Step 5: update DB
         await self._queries.update_article_status(
